@@ -1,0 +1,197 @@
+CREATE DATABASE IF NOT EXISTS db_absensi
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE db_absensi;
+
+-- ── DIVISI ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS divisi (
+  id    INT          NOT NULL AUTO_INCREMENT,
+  nama  VARCHAR(100) NOT NULL,
+  kode  VARCHAR(20)  NOT NULL UNIQUE,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── SHIFT ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS shift (
+  id              INT          NOT NULL AUTO_INCREMENT,
+  nama            VARCHAR(100) NOT NULL,
+  jam_masuk       TIME         NOT NULL,
+  jam_keluar      TIME         NOT NULL,
+  toleransi_menit INT          NOT NULL DEFAULT 15,
+  hari_kerja      VARCHAR(50)  NOT NULL DEFAULT 'Sen-Jum',
+  aktif           TINYINT(1)   NOT NULL DEFAULT 1,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── KARYAWAN ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS karyawan (
+  id              INT          NOT NULL AUTO_INCREMENT,
+  kode_karyawan   VARCHAR(20)  NOT NULL UNIQUE,
+  nama            VARCHAR(150) NOT NULL,
+  jabatan         VARCHAR(100),
+  divisi_id       INT,
+  shift_id        INT,
+  fingerprint_uid INT UNSIGNED,
+  email           VARCHAR(150),
+  no_hp           VARCHAR(20),
+  aktif           TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  FOREIGN KEY (divisi_id) REFERENCES divisi(id) ON DELETE SET NULL,
+  FOREIGN KEY (shift_id)  REFERENCES shift(id)  ON DELETE SET NULL,
+  INDEX idx_fp_uid (fingerprint_uid),
+  INDEX idx_aktif  (aktif)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── PERANGKAT FINGERPRINT ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS perangkat_fp (
+  id            INT           NOT NULL AUTO_INCREMENT,
+  nama          VARCHAR(100)  NOT NULL,
+  ip_address    VARCHAR(45)   NOT NULL,
+  port          SMALLINT UNSIGNED NOT NULL DEFAULT 4370,
+  merek         VARCHAR(50)   NOT NULL DEFAULT 'ZKTeco',
+  lokasi        VARCHAR(150),
+  aktif         TINYINT(1)    NOT NULL DEFAULT 1,
+  terakhir_sync DATETIME,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ip_port (ip_address, port)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── LOG FINGERPRINT (data mentah dari mesin) ─────────────────
+CREATE TABLE IF NOT EXISTS log_fingerprint (
+  id              BIGINT       NOT NULL AUTO_INCREMENT,
+  perangkat_id    INT          NOT NULL,
+  fingerprint_uid INT UNSIGNED NOT NULL,
+  waktu_tap       DATETIME     NOT NULL,
+  tipe            TINYINT      NOT NULL DEFAULT 0,
+  sudah_diproses  TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_tap (perangkat_id, fingerprint_uid, waktu_tap),
+  INDEX idx_diproses (sudah_diproses),
+  INDEX idx_uid_tgl  (fingerprint_uid, waktu_tap),
+  FOREIGN KEY (perangkat_id) REFERENCES perangkat_fp(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── ABSENSI (rekap harian hasil proses) ──────────────────────
+CREATE TABLE IF NOT EXISTS absensi (
+  id              INT  NOT NULL AUTO_INCREMENT,
+  karyawan_id     INT  NOT NULL,
+  tanggal         DATE NOT NULL,
+  jam_masuk       DATETIME,
+  jam_keluar      DATETIME,
+  total_menit     INT        NOT NULL DEFAULT 0,
+  terlambat_menit INT        NOT NULL DEFAULT 0,
+  status          ENUM('hadir','terlambat','absen','izin','libur') NOT NULL DEFAULT 'absen',
+  catatan         TEXT,
+  diinput_manual  TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_karyawan_tgl (karyawan_id, tanggal),
+  INDEX idx_tanggal (tanggal),
+  INDEX idx_status  (status),
+  FOREIGN KEY (karyawan_id) REFERENCES karyawan(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── IZIN ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS izin (
+  id              INT  NOT NULL AUTO_INCREMENT,
+  karyawan_id     INT  NOT NULL,
+  tanggal_mulai   DATE NOT NULL,
+  tanggal_selesai DATE NOT NULL,
+  jenis           ENUM('cuti','sakit','izin','dinas_luar') NOT NULL DEFAULT 'izin',
+  alasan          TEXT,
+  disetujui       TINYINT(1) NOT NULL DEFAULT 0,
+  created_at      DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  FOREIGN KEY (karyawan_id) REFERENCES karyawan(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── USER ADMIN ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS user_admin (
+  id         INT          NOT NULL AUTO_INCREMENT,
+  username   VARCHAR(50)  NOT NULL UNIQUE,
+  password   VARCHAR(255) NOT NULL,
+  nama       VARCHAR(150) NOT NULL,
+  role       ENUM('superadmin','admin','viewer') NOT NULL DEFAULT 'admin',
+  aktif      TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+--  VIEW: Rekap harian
+-- ============================================================
+CREATE OR REPLACE VIEW v_absensi_hari_ini AS
+SELECT
+  a.id, k.kode_karyawan, k.nama,
+  COALESCE(d.nama,'—') AS divisi,
+  COALESCE(s.nama,'—') AS shift,
+  a.tanggal, a.jam_masuk, a.jam_keluar,
+  a.total_menit, a.terlambat_menit,
+  a.status, a.catatan, a.diinput_manual
+FROM absensi a
+JOIN  karyawan k ON a.karyawan_id = k.id
+LEFT JOIN divisi d ON k.divisi_id = d.id
+LEFT JOIN shift  s ON k.shift_id  = s.id
+WHERE a.tanggal = CURDATE();
+
+-- ============================================================
+--  VIEW: Rekap bulanan per karyawan
+-- ============================================================
+CREATE OR REPLACE VIEW v_rekap_bulanan AS
+SELECT
+  k.id                                          AS karyawan_id,
+  k.kode_karyawan, k.nama,
+  COALESCE(d.nama,'—')                          AS divisi,
+  YEAR(a.tanggal)                               AS tahun,
+  MONTH(a.tanggal)                              AS bulan,
+  COUNT(*)                                      AS total_hari,
+  SUM(a.status IN ('hadir','terlambat'))         AS hari_hadir,
+  SUM(a.status = 'terlambat')                   AS hari_terlambat,
+  SUM(a.status = 'absen')                       AS hari_absen,
+  SUM(a.status = 'izin')                        AS hari_izin,
+  COALESCE(SUM(a.total_menit), 0)               AS total_menit_kerja,
+  ROUND(
+    SUM(a.status IN ('hadir','terlambat'))
+    / COUNT(*) * 100
+  , 1)                                          AS persen_kehadiran
+FROM karyawan k
+LEFT JOIN absensi a ON a.karyawan_id = k.id
+LEFT JOIN divisi  d ON k.divisi_id   = d.id
+WHERE k.aktif = 1 AND a.tanggal IS NOT NULL
+GROUP BY k.id, k.kode_karyawan, k.nama, d.nama,
+         YEAR(a.tanggal), MONTH(a.tanggal);
+
+-- ============================================================
+--  DATA AWAL
+-- ============================================================
+
+INSERT INTO divisi (nama, kode) VALUES
+  ('Kepala SPPG','KSP'),
+  ('Admin SPPG','ASP'),
+  ('Akuntan',           'AKU'),
+  ('Ahli Gizi',        'AGI'),
+  ('Assisten Lapangan',          'ASL'),
+  ('Juru Masak / Chef','JMC'),
+  ('Pemorsian & Packing','PNP'),
+  ('Persiapan','PSN'),
+  ('Pengolahan','PGN'),
+  ('Pencuci Tray','CEO'),
+  ('Distributor / Driver','DRV'),
+  ('Petugas Kebersihan & Security','PKS')
+
+INSERT INTO shift (nama, jam_masuk, jam_keluar, toleransi_menit, hari_kerja) VALUES
+  ('Shift Pagi',  '08:00:00', '16:00:00', 15, 'Sen-Jum'),
+  ('Shift Siang', '12:00:00', '20:00:00', 15, 'Sen-Jum'),
+  ('Shift Malam', '20:00:00', '04:00:00', 15, 'Sen-Min')
+ON DUPLICATE KEY UPDATE nama = VALUES(nama);
+
+-- Admin default — password: admin123
+INSERT INTO user_admin (username, password, nama, role) VALUES
+  ('admin',
+   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQyCMRlwBfyBam2LSEQ13ZGTS',
+   'Administrator', 'superadmin')
+ON DUPLICATE KEY UPDATE username = VALUES(username);
+
+-- ============================================================
+SELECT 'Database berhasil dibuat!' AS status;
+
+  

@@ -1,0 +1,1 @@
+import{v as u,r as t}from"./index-jMQyzZr5.js";const n=[["path",{d:"m21 21-4.34-4.34",key:"14j7rj"}],["circle",{cx:"11",cy:"11",r:"8",key:"4ej97u"}]],i=u("search",n);function m(e,c=400){const[r,o]=t.useState(e);return t.useEffect(()=>{const s=setTimeout(()=>o(e),c);return()=>clearTimeout(s)},[e,c]),r}export{i as S,m as u};

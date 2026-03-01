@@ -1,0 +1,1 @@
+import{j as e}from"./index-jMQyzZr5.js";function n(){return e.jsxs("div",{className:"flex flex-col items-center justify-center h-[60vh] gap-4",children:[e.jsx("p",{className:"text-6xl font-bold font-mono text-muted-foreground/30",children:"404"}),e.jsx("p",{className:"text-muted-foreground text-sm",children:"Halaman tidak ditemukan"})]})}export{n as default};

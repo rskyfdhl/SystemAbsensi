@@ -1,0 +1,31 @@
+
+# ── PYTHON / BACKEND ─────────────────────────────────────────
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.env           # ← JANGAN push! berisi password DB
+backend/static/        # ← hasil build React, generate lokal
+
+# ── NODE / FRONTEND ──────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env          # ← JANGAN push!
+frontend/.env.local
+frontend/.env.production
+
+# ── OS FILES ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── EDITOR ───────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── LOG FILES ─────────────────────────────────────────────────
+*.log
+logs/
