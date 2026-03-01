@@ -299,4 +299,10 @@ MIT License — bebas digunakan dan dimodifikasi.
 
 ## 👤 Kontak
 
-Dibuat dengan ❤️ menggunakan React + Flask + MySQL
+# Dibuat dengan ❤️ menggunakan React + Flask + MySQL
+
+# SystemAbsensi
+
+SystemAbsensi by Fingerprint Machine for access localhost
+
+> > > > > > > 927600b5a386b51ab3e042af3d9cb033bfcdfa3b
